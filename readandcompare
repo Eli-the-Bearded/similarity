@@ -1,0 +1,70 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use vars qw( %files @corners $file $fh @list
+	     $diff_thres $similarity $sim_thres
+	);
+
+$diff_thres = 5;
+
+undef $/;
+for $file (@ARGV) {
+  open($fh, '<', $file) || die "$0: $file: $!\n";
+  $files{$file} = [ split(/\s+/, <$fh>) ];
+  close $fh;
+}
+
+@list = sort { $files{$a}[0] <=> $files{$b}[0] } (keys %files);
+
+# compare each image to the ones after it
+for (my $i = 0; $i < @list - 1; $i ++) {
+  for (my $j = $i + 1; $j < @list; $j ++) {
+    my $fi = $list[$i];
+    my $fj = $list[$j];
+
+    # initial version is just as-is, for improvement,
+    # consider 90, 180, and 270 deg rotations
+    @corners = (
+                  abs($files{$fi}[0] - $files{$fj}[0]),
+                  abs($files{$fi}[1] - $files{$fj}[1]),
+                  abs($files{$fi}[2] - $files{$fj}[2]),
+                  abs($files{$fi}[3] - $files{$fj}[3])
+               );
+
+    if( $corners[0] < $diff_thres and
+        $corners[1] < $diff_thres and
+        $corners[2] < $diff_thres and
+        $corners[3] < $diff_thres ) {
+
+	# print "Detail check: $fi  $fj\n";
+	# all four corners are kinda similar, let's do
+	# a detail check
+
+        my @mi = map { hex($_) } ( $files{$fi}[4] =~ m/(..)/g );
+        my @mj = map { hex($_) } ( $files{$fj}[4] =~ m/(..)/g );
+
+	my $similarity = @mi;
+
+	map { $similarity -= (
+			      (abs($mi[$_] - $mj[$_]) < $diff_thres) ?
+			      0 : 1 )
+	    } (0..47);
+
+	if ($similarity < 42) { next; }
+
+	if ($fi =~ /money/ and $fj =~ /money/) { next; }
+	if ($fi =~ /frame(-|s[.]d)/ and $fj =~ /frame(-|s[.]d)/) { next; }
+
+        $fi =~ s,^iconed/,../,; $fi =~ s/.str$/.jpg/; $fi =~ tr,:,/,;
+        $fj =~ s,^iconed/,../,; $fj =~ s/.str$/.jpg/; $fj =~ tr,:,/,;
+
+	print "Sim value $similarity\n";
+	if ($similarity == 48) {
+	  print "Likely same  : $fi  $fj\n\n";
+	} else {
+	  print "Kinda similar: $fi  $fj\n\n";
+	}
+    }
+  }
+}
+

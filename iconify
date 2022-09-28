@@ -1,0 +1,26 @@
+#!/bin/ksh
+# Make 8x8 grayscale versions and 4x4 color, in text format
+
+input=TEST-in
+dir=iconed
+
+mkdir -p $dir
+count=$(wc -l < $input)
+echo Scaling $count JPEGs
+
+b=$(date +%s.%N)
+for file in $(< $input ); do
+    out=$dir/$(echo ${file%.*} | tr / :)
+    djpeg ../$file | pnmscale -xs 8 -ys 8 |
+       pnmnorm 2>/dev/null | tee $out.tmp |
+       ppmtopgm | pnmnoraw > $out.8x8
+    pnmscale -xs 4 -ys 4 < $out.tmp |
+       pnmnoraw > $out.4x4
+    rm $out.tmp
+done
+e=$(date +%s.%N)
+
+s=$(echo $e $b -p |dc)
+ms=$(echo $s 1000*$count/p |dc)
+echo Done after $s seconds, $ms ms each
+

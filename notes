@@ -1,0 +1,31 @@
+Mon 26 Sep 2022 08:22:03 PM PDT
+Scaling 1288 TEST-in JPEGs
+Done after 108.298367095 seconds
+
+du -sh iconed
+5.2M    iconed
+
+scale to 8x8 gray and 4x4 color
+checking 4 corners gray scale as pre-check, +/- 5 similarity
+then all pixels in 4x4, +/- 5 similarity
+  found lots of duplicates
+
+
+step 0: create a list
+
+find ~ -name \*.jpg > TEST-in
+
+step 1: iconify them
+
+ksh iconify
+
+step 2: convert icons to checkable format (todo: merge with step 1)
+
+perl icontostring iconed/*.?x?  
+
+step 3: find dupes
+
+perl readandcompare iconed/*.str
+
+
+Todo: use corner check to find rotated versions
