@@ -1,8 +1,8 @@
-#!/bin/ksh
+#!/bin/bash
 # Make 8x8 grayscale versions and 4x4 color, in text format
 
-input=TEST-in
-dir=iconed
+input=../TEST-in
+dir=../iconed
 
 mkdir -p $dir
 count=$(wc -l < $input)

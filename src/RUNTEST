@@ -1,0 +1,17 @@
+#!/bin/sh
+
+echo "clean-up old files"
+rm -rf ../iconed/
+
+echo "regenerate file list if needed"
+if [ ! -f ../TEST-in ] ; then
+  ( cd ../ ; find samples.d -type f > TEST-in )
+fi
+
+echo "generate new comparison icons"
+./iconify
+./icontostring ../iconed/*.?x?
+
+echo "compare them"
+echo
+./readandcompare ../iconed/*.str

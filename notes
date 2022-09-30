@@ -10,22 +10,29 @@ checking 4 corners gray scale as pre-check, +/- 5 similarity
 then all pixels in 4x4, +/- 5 similarity
   found lots of duplicates
 
+Sample method:
+
+    cd src && ./RUNTEST
+
+You'll get more matches at verbosity 1 than 0, because
+of the skip reporting rules.
+
+General method:
 
 step 0: create a list
 
-find ~ -name \*.jpg > TEST-in
+    find ~ -name \*.jpg > TEST-in
 
 step 1: iconify them
 
-ksh iconify
+    bash iconify
 
 step 2: convert icons to checkable format (todo: merge with step 1)
 
-perl icontostring iconed/*.?x?  
+    perl icontostring iconed/*.?x?  
 
 step 3: find dupes
 
-perl readandcompare iconed/*.str
+    perl readandcompare iconed/*.str
 
 
-Todo: use corner check to find rotated versions

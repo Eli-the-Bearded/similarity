@@ -75,7 +75,7 @@ sub i8x8 {
   #   56 57 58 59 60 61 62 63
   $a = $samples[9];
   $b = $samples[14];
-  $c = $samples[29];
+  $c = $samples[49];
   $d = $samples[54];
 
   $output{$ofile}[0] = "$a $b $c $d\n";

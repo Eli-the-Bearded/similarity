@@ -1,0 +1,227 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use vars qw( %files $file $fh @list $verbose
+	     @skip_pairs %cc %vc
+	     $diff_thres $sim_thres $value_count $similarity
+	);
+
+# 0 to 3
+$verbose = 0;
+
+# number of values (counting from 0) to expect to compare
+# 4 x 4 image in R,B,G channels = 48
+$value_count = 47;
+
+# difference out of 255 to consider same level for a color value
+# (less than check) (10%)
+$diff_thres = 25;
+
+# needed similar out of 48 to consider likely match
+# (greater-equal check)
+$sim_thres = 42;
+
+# A money directory file matching a money directory file is
+# not surprising. Similarly for things inside exploded videos.
+# So if both file names match the same RE, skip reporting on
+# that pair.
+@skip_pairs = (
+	qr/money/,
+	qr/frame(?:-|s[.]d)/,
+);
+
+# Identity maps for corner check (cc) and value check (vc)
+$cc{0} = [ 0..3 ];
+$vc{0} = [ 0..47 ];
+
+# Rotate clockwise 90 degrees
+# Corners are gray scale, simple, values are RGB, more complicated
+$cc{90} = [ 2, 0, 3, 1 ];
+$vc{90} = [
+	    36, 37, 38,  24, 25, 26,  12, 13, 14,  0,  1,  2,
+	    39, 40, 41,  27, 28, 29,  15, 16, 17,  3,  4,  5,
+	    42, 43, 44,  30, 31, 32,  18, 19, 20,  6,  7,  8,
+	    45, 46, 47,  33, 34, 35,  21, 22, 23,  9, 10, 11,
+	  ];
+
+# Rotate 180 degrees
+# Corners are gray scale, simple, values are RGB, more complicated
+$cc{180} = [ 3, 2, 1, 0 ];
+$vc{180} = [
+	    45, 46, 47,  42, 43, 44,  39, 40, 41,  36, 37, 38,
+	    33, 34, 35,  30, 31, 32,  27, 28, 29,  24, 25, 26,
+	    21, 22, 23,  18, 19, 20,  15, 16, 17,  12, 13, 14,
+	     9, 10, 11,   6,  7,  8,   3,  4,  5,   0,  1,  2,
+	  ];
+
+# Rotate counter-clockwise 90 degrees
+# Corners are gray scale, simple, values are RGB, more complicated
+$cc{270} = [ 1, 3, 0, 2 ];
+$vc{270} = [
+	    9, 10, 11,  21, 22, 23,  33, 34, 35,  45, 46, 47,
+	    6,  7,  8,  18, 19, 20,  30, 31, 32,  42, 43, 44,
+	    3,  4,  5,  15, 16, 17,  27, 28, 29,  39, 40, 41,
+	    0,  1,  2,  12, 13, 14,  24, 25, 26,  36, 37, 38,
+	  ];
+
+undef $/;	# read entire files at once
+for $file (@ARGV) {
+  open($fh, '<', $file) || die "$0: $file: $!\n";
+  $files{$file} = [ split(/\s+/, <$fh>) ];
+  close $fh;
+}
+
+# no real reason to sort, will work with unsorted keys, too
+@list = sort { $files{$a}[0] <=> $files{$b}[0] } (keys %files);
+
+# compare each image to the ones after it
+for (my $i = 0; $i < @list - 1; $i ++) {
+  for (my $j = $i + 1; $j < @list; $j ++) {
+    my $fi = $list[$i];
+    my $fj = $list[$j];
+
+    if ($verbose > 1) { print "$fi .. $fj\n"; }
+    # Rotation 90 probably slightly more frequent than 270, both
+    # more frequent than 180.
+    # Top-bpttom, left-right, and fully x-y transpose are
+    # easily doable this way but unlikely to be useful.
+    # Stop checking once a match is found.
+    tcheck("0", $fi, $fj) ||
+    	tcheck("90", $fi, $fj) ||
+	tcheck("270", $fi, $fj) ||
+	tcheck("180", $fi, $fj);
+  }
+}
+
+################################################################
+# Functions follow
+#
+
+# If both files match the same regexp, surpress output. This
+# is useful if you can tell by filename that matches will be
+# likely and not interesting. For me, scans of game money
+# with samples from different editions are not useful to report.
+# Return any "true" value to skip.
+# Uses global @skip_pairs
+sub skip_match {
+  my $fi = shift;
+  my $fj = shift;
+
+  for my $re (@skip_pairs) {
+    if ($fi =~ /$re/ and $fj =~ /$re/) { return "skip"; }
+  }
+  return undef;
+} # end &skip_match 
+
+# This is specific to how the prototype implementation has changed
+# filenames in the iconify process.
+sub name_demangle {
+  my $name = shift;
+
+  $name =~ s,^[./]*iconed/,../,;
+  $name =~ s/.str$/.jpg/;
+  $name =~ tr,:,/,;
+
+  $name;
+} # end &name_demangle 
+
+# Output for the human (in the prototype)
+# If all 48 values are similar, "likely" match reported.
+# If if simularity threshold are similar, "kinda" match reported.
+# Uses global $value_count
+sub report {
+  my $fi    = shift;
+  my $fj    = shift;
+  my $simv  = shift;
+  my $trans = shift;
+
+  $fi = name_demangle($fi);
+  $fj = name_demangle($fj);
+
+  print "Similarity value $simv, for transformation $trans\n";
+
+  if ($simv > $value_count) {
+    print "Likely same  : $fi  $fj\n\n";
+  } else {
+    print "Kinda similar: $fi  $fj\n\n";
+  }
+
+} # end &report 
+
+# Using the named transform, looks up details for the
+# two named files and compares them. First pass checks
+# gray scale corners, this is a fast weed out for unlike
+# images, and also a way to find a rotation.
+#
+# All four corners must be within threshold to continue.
+# Second pass checks RGB colors with same threshold for
+# similar values.
+# 
+# Returns similarity value (higher is better, 48 is highest)
+# if similar, undef if not.
+#
+# Uses configuration globals:
+#	%cc          corner check maps for the transform
+#	%vc          value check maps for the transform
+#       $diff_thres  difference to accept as same in a single number
+#	$value_count will be 48 if 4x4x3 images are used
+#       $sim_thres   minimum similarity to report on
+#       $verbose     output more
+#
+# And data from global %files:
+#	$files{FILENAME}[0]	top left corner
+#	$files{FILENAME}[1]	top right corner
+#	$files{FILENAME}[2]	bottom left corner
+#	$files{FILENAME}[3]	bottom right corner
+#	$files{FILENAME}[4]	4x4x3 image (8bit) in hexadecimal
+sub tcheck {
+  my $transform = shift;
+  my $fi        = shift;
+  my $fj        = shift;
+  my $c = $cc{$transform};
+  my $v = $vc{$transform};
+
+  die "Missing cc $transform definition\n" unless defined($c);
+  die "Missing vc $transform definition\n" unless defined($v);
+
+  my $similarity;
+  my @corners = (
+                  abs($files{$fi}[0] - $files{$fj}[$$c[0]]),
+                  abs($files{$fi}[1] - $files{$fj}[$$c[1]]),
+                  abs($files{$fi}[2] - $files{$fj}[$$c[2]]),
+                  abs($files{$fi}[3] - $files{$fj}[$$c[3]])
+               );
+
+  if ($verbose > 2) { print "$transform \@corners: @corners\n"; }
+  if( $corners[0] < $diff_thres and
+      $corners[1] < $diff_thres and
+      $corners[2] < $diff_thres and
+      $corners[3] < $diff_thres ) {
+
+      if ($verbose) {
+        print "Detail check: $fi  $fj\n";
+      }
+
+      # all four corners are kinda similar, let's do
+      # a detail check
+
+      # hex to integer for all all values in image
+      my @mi = map { hex($_) } ( $files{$fi}[4] =~ m/(..)/g );
+      my @mj = map { hex($_) } ( $files{$fj}[4] =~ m/(..)/g );
+
+      $similarity = 1+$value_count;
+
+      # Find the absolute difference for each value, subtract
+      # one for each time outside the threshold
+      map { $similarity -= (
+			    (abs($mi[$_] - $mj[$$v[$_]]) < $diff_thres) ?
+			    0 : 1 )
+	  } (0..$value_count);
+
+      if ($similarity < $sim_thres) { return undef; }
+      if ($verbose == 0 and skip_match($fi, $fj)) { return undef; }
+
+      report($fi, $fj, $similarity, $transform);
+      return $similarity;
+  }
+} # end &tcheck 
